@@ -131,7 +131,15 @@ const VALUE_TYPE = 0;
 const FLAG_TYPE = 1;
 const SELECTION_TYPE = 3;
 
+// Which column of the plot data array holds the QCed value to fit.
+// Row shape is [Date, ghost, ...series...]; VERIFY this against getPlotLabels()
+// for your variable before relying on it (see note below).
+const REGRESSION_DATA_COLUMN = 2;
+
 var currentPlot = 1;
+
+// Regression line toggle state, per plot
+var regressionVisible = { 1: false, 2: false };
 
 // Plot data is passed through form inputs.
 // On the page we move them to variables so the plot data isn't
@@ -1332,34 +1340,50 @@ function drawDataPlot1Y(index, keepZoom) {
     }
   }
 
-  // Reference value for gas standards and similar
+  // Compute the regression fit. It is drawn inside the underlayCallback below,
+  // which is the only place Dygraph provides the canvas context and the axis
+  // mapping (g). Do NOT try to draw it out here - canvas/g don't exist yet
+  // (the Dygraph isn't constructed until the end of this function).
+  let regression = regressionVisible[index]
+    ? computeRegression(window['dataPlot' + index + 'Data'], REGRESSION_DATA_COLUMN)
+    : null;
+    
+  // Gas-standard reference lines AND the regression line are both drawn in a
+  // single underlayCallback. Install it if EITHER is needed - a plot with no
+  // gas standards still needs the callback so the regression line can draw.
   let referenceValues = getReferenceValues(index);
-  if (null != referenceValues) {
+  if (null != referenceValues || null != regression) {
     data_options.underlayCallback = function(canvas, area, g) {
-      canvas.setLineDash([10, 5]);
-      canvas.strokeStyle = '#FF0000';
-      canvas.lineWidth = 3;
-      canvas.beginPath();
+      if (null != referenceValues) {
+        canvas.setLineDash([10, 5]);
+        canvas.strokeStyle = '#FF0000';
+        canvas.lineWidth = 3;
+        canvas.beginPath();
 
-      canvas.moveTo(g.toDomXCoord(referenceValues[0].date), g.toDomYCoord(referenceValues[0].value));
+        canvas.moveTo(g.toDomXCoord(referenceValues[0].date), g.toDomYCoord(referenceValues[0].value));
 
-      let currentIndex = 0;
+        let currentIndex = 0;
 
-      while (currentIndex < referenceValues.length - 1) {
-        canvas.lineTo(g.toDomXCoord(referenceValues[currentIndex + 1].date),
+        while (currentIndex < referenceValues.length - 1) {
+          canvas.lineTo(g.toDomXCoord(referenceValues[currentIndex + 1].date),
+                        g.toDomYCoord(referenceValues[currentIndex].value));
+
+          canvas.lineTo(g.toDomXCoord(referenceValues[currentIndex + 1].date),
+                        g.toDomYCoord(referenceValues[currentIndex + 1].value));
+
+          currentIndex++;
+        }
+
+        canvas.lineTo(g.toDomXCoord(g.xAxisExtremes()[1]),
                       g.toDomYCoord(referenceValues[currentIndex].value));
 
-        canvas.lineTo(g.toDomXCoord(referenceValues[currentIndex + 1].date),
-                      g.toDomYCoord(referenceValues[currentIndex + 1].value));
-
-        currentIndex++;
+        canvas.stroke();
+        canvas.setLineDash([]);
       }
 
-      canvas.lineTo(g.toDomXCoord(g.xAxisExtremes()[1]),
-                    g.toDomYCoord(referenceValues[currentIndex].value));
-
-      canvas.stroke();
-      canvas.setLineDash([]);
+      if (null != regression) {
+        drawRegressionOverlay(canvas, g, regression);
+      }
     }
   }
 
@@ -1832,6 +1856,73 @@ function hideFlags(plotIndex) {
     initMap(currentPlot);
   }
 }
+
+/*#########################################################################################################################
+* #########################################################################################################################
+* #########################################################################################################################
+* #########################################################################################################################
+* #########################################################################################################################
+*/
+function toggleRegression(index) {
+  regressionVisible[index] = !regressionVisible[index];
+  // Recompute/redraw only the data plot, preserving the current zoom.
+  drawPlot(index, false, true);
+}
+
+// Ordinary least-squares fit over the plotted rows. x = time in ms.
+function computeRegression(rows, valueCol) {
+  let n = 0, sx = 0, sy = 0, sxy = 0, sxx = 0;
+  for (const row of rows) {
+    let x = row[0] instanceof Date ? row[0].getTime() : row[0];
+    let y = row[valueCol];
+    if (y === null || y === undefined || isNaN(y)) {
+		continue; // skip gaps/flagged
+		}
+    n++; sx += x; sy += y; sxy += x * y; sxx += x * x;
+  }
+  let denom = n * sxx - sx * sx;
+  if (n < 2 || denom === 0) return null;
+   let slope = (n * sxy - sx * sy) / denom;
+  let intercept = (sy - slope * sx) / n;
+   // R²
+  let yMean = sy / n, ssTot = 0, ssRes = 0;
+  for (const row of rows) {
+    let x = row[0] instanceof Date ? row[0].getTime() : row[0];
+    let y = row[valueCol];
+/*    if (y === null || y === undefined || isNaN(y)) {
+		continue;
+		}*/
+    let yHat = slope * x + intercept;
+    ssTot += (y - yMean) * (y - yMean);
+    ssRes += (y - yHat) * (y - yHat);
+  }
+  let r2 = ssTot === 0 ? 1 : 1 - ssRes / ssTot;
+  return { slope, intercept, r2 };
+}
+// Draws the fitted line + equation/R² onto the plot canvas.
+function drawRegressionOverlay(canvas, g, reg) {
+  let [xMin, xMax] = g.xAxisRange();
+  canvas.save();
+  canvas.strokeStyle = '#d62728';
+  canvas.lineWidth = 2;
+  canvas.beginPath();
+  canvas.moveTo(g.toDomXCoord(xMin), g.toDomYCoord(reg.slope * xMin + reg.intercept));
+  canvas.lineTo(g.toDomXCoord(xMax), g.toDomYCoord(reg.slope * xMax + reg.intercept));
+  canvas.stroke();
+   let slopePerDay = reg.slope * 86400000; // ms → per-day, human-readable
+  canvas.fillStyle = '#d62728';
+  canvas.font = '12px sans-serif';
+  canvas.fillText(
+    'y = ' + slopePerDay.toFixed(4) + '·day + ' + reg.intercept.toFixed(4) +
+    '    R² = ' + reg.r2.toFixed(4), 10, 14);
+  canvas.restore();
+}
+//#########################################################################################################################
+//#########################################################################################################################
+//#########################################################################################################################
+//#########################################################################################################################
+//#########################################################################################################################
+
 
 function showVariableDialog(plotIndex) {
   currentPlot = plotIndex;

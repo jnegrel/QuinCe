@@ -231,6 +231,15 @@ td.selected > div {
   height: 25px !important;
 }
 
+.regressionButton {
+  background-image: url("#{resource['image/regression_button.svg']}") !important;
+  background-size: cover;
+  margin-left: -13px !important;
+  margin-top: -13px !important;
+  width: 25px !important;
+  height: 25px !important;
+}
+
 .selectModeButtons {
   margin-left: 10px;
 }

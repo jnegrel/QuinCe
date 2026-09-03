@@ -287,6 +287,10 @@
                   value="#{sessionScope[beanName].data.plot1HideFlags}"
                   id="plot1HideFlags" onchange="hideFlags(1); return false;"
                   styleClass="tightIconButton plotFooterButton" />
+                <p:selectBooleanButton onIcon="regressionButton" offIcon="regressionButton"
+                  value="#{sessionScope[beanName].data.plot1RegLine}"
+                  id="plot1RegLine" onchange="toggleRegression(1); return false;"
+                  styleClass="tightIconButton plotFooterButton" />
               </div>
               <ui:fragment rendered="#{sessionScope[beanName].canEdit}">
                 <p:selectOneButton id="plotSelectMode" widgetVar="plot1SelectMode"

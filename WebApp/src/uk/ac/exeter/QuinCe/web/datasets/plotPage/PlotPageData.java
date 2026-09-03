@@ -1033,4 +1033,34 @@ public abstract class PlotPageData {
     plot2.setHideFlags(hide);
     map2.setHideFlags(hide);
   }
+
+  /**                                                                                                                                                                                                                      
+  * Whether the regression line is shown on plot 1. This is a purely                                                                                                                                                      
+  * client-side display toggle (the line is drawn in JavaScript); the value is                                                                                                                                            
+  * held here only so the {@code p:selectBooleanButton} in the plot toolbar has                                                                                                                                           
+  * a property to bind to.                                                                                                                                                                                                
+  */                                                                                                                                                                                                                      
+  private boolean plot1RegLine = false;                
+  
+  /**                                                                                                                                                                                                                      
+  * Whether the regression line is shown on plot 2. See {@link #plot1RegLine}.                                                                                                                                            
+  */                                                                                                                                                                                                                      
+  private boolean plot2RegLine = false;                 
+  
+  public boolean getPlot1RegLine() {
+    return plot1RegLine;    
+  }
+  
+  public void setPlot1RegLine(boolean regLine) {
+    this.plot1RegLine = regLine;    
+  }
+  
+  public boolean getPlot2RegLine() {
+    return plot2RegLine;
+  }    
+  
+  public void setPlot2RegLine(boolean regLine) {
+    this.plot2RegLine = regLine; 
+  }
 }
+
